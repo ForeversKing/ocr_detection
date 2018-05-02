@@ -14,18 +14,19 @@ logging.basicConfig(
         format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s',
         datefmt='%d %b %Y %H:%M:%S',
         filename='./log.txt',
-        filemode='w')
+        filemode='a+')
 # sys.path.append('..')
 
 tf.app.flags.DEFINE_integer('input_size', 512, '')
 tf.app.flags.DEFINE_integer('batch_size_per_gpu', 14, '')
-tf.app.flags.DEFINE_integer('num_readers', 16, '')
+tf.app.flags.DEFINE_integer('num_readers', 10, '')
 tf.app.flags.DEFINE_float('learning_rate', 0.0001, '')
 tf.app.flags.DEFINE_integer('max_steps', 100000, '')
+tf.app.flags.DEFINE_integer('start_steps', 27260, '')
 tf.app.flags.DEFINE_float('moving_average_decay', 0.997, '')
 tf.app.flags.DEFINE_string('gpu_list', '1', '')
 tf.app.flags.DEFINE_string('checkpoint_path', './save_model/east_resnet_v1_50_rbox/', '')
-tf.app.flags.DEFINE_boolean('restore', False, 'whether to resotre from checkpoint')
+tf.app.flags.DEFINE_boolean('restore', True, 'whether to resotre from checkpoint')
 tf.app.flags.DEFINE_integer('save_checkpoint_steps', 1000, '')
 tf.app.flags.DEFINE_integer('save_summary_steps', 100, '')
 tf.app.flags.DEFINE_string('pretrained_model_path', None, '')
@@ -163,7 +164,7 @@ def main(argv=None):
                                               batch_size=FLAGS.batch_size_per_gpu * len(gpus))
 
         start = time.time()
-        for step in range(FLAGS.max_steps):
+        for step in range(FLAGS.start_steps, FLAGS.max_steps):
             data = next(data_generator)
             feed_dict = {input_images: data[0],
                          input_score_maps: data[2],

@@ -2,6 +2,7 @@ import cv2
 import time
 import math
 import os
+import sys
 import numpy as np
 import tensorflow as tf
 
@@ -10,11 +11,14 @@ import lanms
 import model
 from icdar import restore_rectangle
 import glob
+from setting import *
 
-tf.app.flags.DEFINE_string('test_data_path', '/home/yulongwu/d/3K/3K-KTP/', '')
-tf.app.flags.DEFINE_string('gpu_list', '1', '')
+sys.path.append(PROJECT_ROOT)
+
+tf.app.flags.DEFINE_string('test_data_path', './demo_images', '')
+tf.app.flags.DEFINE_string('gpu_list', '', '')
 tf.app.flags.DEFINE_string('checkpoint_path', '/home/yulongwu/d/EAST/save_model/east_resnet_v1_50_rbox/', '')
-tf.app.flags.DEFINE_string('output_dir', '/tmp/ch4_test_images/images/', '')
+tf.app.flags.DEFINE_string('output_dir', '/tmp/ocr_images/', '')
 tf.app.flags.DEFINE_bool('no_write_images', False, 'do not write images')
 
 
@@ -41,7 +45,7 @@ def get_images():
     #                 files.append(os.path.join(parent, filename))
     #                 break
     # print('Find {} images'.format(len(files)))
-    files = glob.glob(os.path.join(FLAGS.test_data_path, '*.PNG'))[:10]
+    files = glob.glob(os.path.join(FLAGS.test_data_path, '*.png'))
     return files
 
 

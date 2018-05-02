@@ -1,21 +1,20 @@
 # coding:utf-8
-import glob
 import csv
-import cv2
-import time
+import glob
 import os
-import numpy as np
-import scipy.optimize
-import matplotlib.pyplot as plt
-import matplotlib.patches as Patches
-from shapely.geometry import Polygon
+import time
 import xml.etree.ElementTree as ET
 
+import cv2
+import matplotlib.patches as Patches
+import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
+from shapely.geometry import Polygon
 
 from data_util import GeneratorEnqueuer
 
-tf.app.flags.DEFINE_string('training_data_path', '/home/yulongwu/d/VOC2007/JPEGImages/',
+tf.app.flags.DEFINE_string('training_data_path', '../data/LikeVOC/JPEGImages/',
                            'training dataset to use')
 tf.app.flags.DEFINE_integer('max_image_large_side', 1280,
                             'max image size of training')
@@ -30,7 +29,6 @@ tf.app.flags.DEFINE_float('min_crop_side_ratio', 0.1,
 tf.app.flags.DEFINE_string('geometry', 'RBOX',
                            'which geometry to generate, RBOX or QUAD')
 
-
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -42,11 +40,14 @@ def get_images():
     files = glob.glob(os.path.join(FLAGS.training_data_path, '*.jpg'))
     return files
 
+
 def get_pascal_images():
-    imageset = '/home/disk1/xupeichao/CTPN_CRNN/DATA/VOC0404_DRBOX/VOCdevkit/VOC2007/ImageSets/Main/train.txt'
-    images_dir = '/home/disk1/xupeichao/CTPN_CRNN/DATA/VOC0404_DRBOX/VOCdevkit/VOC2007/JPEGImages'
-    files = [os.path.join(images_dir, i.strip()+'.jpg') for i in open(imageset, 'r').readlines()]
+    files = []
+    for ext in ['jpg', 'png']:
+        files.extend(glob.glob(
+            os.path.join(FLAGS.training_data_path, '*.{}'.format(ext))))
     return files
+
 
 def load_annoataion(p):
     '''
@@ -73,6 +74,7 @@ def load_annoataion(p):
                 text_tags.append(False)
         return np.array(text_polys, dtype=np.float32), np.array(text_tags, dtype=np.bool)
 
+
 def load_pascal_annoataion(p):
     '''
     load annotation from the text file
@@ -88,16 +90,12 @@ def load_pascal_annoataion(p):
     anno = tree.getroot()
     objs = anno.findall('object')
     for obj in objs:
-        rbox = obj.find("rotbox")
-        x1 = float(rbox.find('ltx').text)
-        y1 = float(rbox.find('lty').text)
-        x2 = float(rbox.find('rtx').text)
-        y2 = float(rbox.find('rty').text)
-        x3 = float(rbox.find('rbx').text)
-        y3 = float(rbox.find('rby').text)
-        x4 = float(rbox.find('lbx').text)
-        y4 = float(rbox.find('lby').text)
-        text_polys.append([[x1, y1], [x2, y2], [x3, y3], [x4, y4]])
+        rbox = obj.find("bndbox")
+        xmin = float(rbox.find('xmin').text)
+        xmax = float(rbox.find('xmax').text)
+        ymin = float(rbox.find('ymin').text)
+        ymax = float(rbox.find('ymax').text)
+        text_polys.append([[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]])
         text_tags.append(False)
     return np.array(text_polys, dtype=np.float32), np.array(text_tags, dtype=np.bool)
 
@@ -114,7 +112,7 @@ def polygon_area(poly):
         (poly[3][0] - poly[2][0]) * (poly[3][1] + poly[2][1]),
         (poly[0][0] - poly[3][0]) * (poly[0][1] + poly[3][1])
     ]
-    return np.sum(edge)/2.
+    return np.sum(edge) / 2.
 
 
 def check_and_validate_polys(polys, tags, xxx_todo_changeme):
@@ -128,8 +126,8 @@ def check_and_validate_polys(polys, tags, xxx_todo_changeme):
     (h, w) = xxx_todo_changeme
     if polys.shape[0] == 0:
         return polys
-    polys[:, :, 0] = np.clip(polys[:, :, 0], 0, w-1)
-    polys[:, :, 1] = np.clip(polys[:, :, 1], 0, h-1)
+    polys[:, :, 0] = np.clip(polys[:, :, 0], 0, w - 1)
+    polys[:, :, 1] = np.clip(polys[:, :, 1], 0, h - 1)
 
     validated_polys = []
     validated_tags = []
@@ -158,18 +156,19 @@ def crop_area(im, polys, tags, crop_background=False, max_tries=50):
     :return:
     '''
     h, w, _ = im.shape
-    pad_h = h//10
-    pad_w = w//10
-    h_array = np.zeros((h + pad_h*2), dtype=np.int32)
-    w_array = np.zeros((w + pad_w*2), dtype=np.int32)
+    print('############', h, w)
+    pad_h = h // 10
+    pad_w = w // 10
+    h_array = np.zeros((h + pad_h * 2), dtype=np.int32)
+    w_array = np.zeros((w + pad_w * 2), dtype=np.int32)
     for poly in polys:
         poly = np.round(poly, decimals=0).astype(np.int32)
         minx = np.min(poly[:, 0])
         maxx = np.max(poly[:, 0])
-        w_array[minx+pad_w:maxx+pad_w] = 1
+        w_array[minx + pad_w:maxx + pad_w] = 1
         miny = np.min(poly[:, 1])
         maxy = np.max(poly[:, 1])
-        h_array[miny+pad_h:maxy+pad_h] = 1
+        h_array[miny + pad_h:maxy + pad_h] = 1
     # ensure the cropped area not across a text
     h_axis = np.where(h_array == 0)[0]
     w_axis = np.where(w_array == 0)[0]
@@ -177,16 +176,17 @@ def crop_area(im, polys, tags, crop_background=False, max_tries=50):
         return im, polys, tags
     for i in range(max_tries):
         xx = np.random.choice(w_axis, size=2)
+        print('!!!')
         xmin = np.min(xx) - pad_w
         xmax = np.max(xx) - pad_w
-        xmin = np.clip(xmin, 0, w-1)
-        xmax = np.clip(xmax, 0, w-1)
+        xmin = np.clip(xmin, 0, w - 1)
+        xmax = np.clip(xmax, 0, w - 1)
         yy = np.random.choice(h_axis, size=2)
         ymin = np.min(yy) - pad_h
         ymax = np.max(yy) - pad_h
-        ymin = np.clip(ymin, 0, h-1)
-        ymax = np.clip(ymax, 0, h-1)
-        if xmax - xmin < FLAGS.min_crop_side_ratio*w or ymax - ymin < FLAGS.min_crop_side_ratio*h:
+        ymin = np.clip(ymin, 0, h - 1)
+        ymax = np.clip(ymax, 0, h - 1)
+        if xmax - xmin < FLAGS.min_crop_side_ratio * w or ymax - ymin < FLAGS.min_crop_side_ratio * h:
             # area too small
             continue
         if polys.shape[0] != 0:
@@ -198,15 +198,15 @@ def crop_area(im, polys, tags, crop_background=False, max_tries=50):
         if len(selected_polys) == 0:
             # no text in this area
             if crop_background:
-                return im[ymin:ymax+1, xmin:xmax+1, :], polys[selected_polys], tags[selected_polys]
+                return im[ymin:ymax + 1, xmin:xmax + 1, :], polys[selected_polys], tags[selected_polys]
             else:
                 continue
-        im = im[ymin:ymax+1, xmin:xmax+1, :]
+        im = im[ymin:ymax + 1, xmin:xmax + 1, :]
         polys = polys[selected_polys]
         tags = tags[selected_polys]
         polys[:, :, 0] -= xmin
         polys[:, :, 1] -= ymin
-        return im, polys, tags
+        # return im, polys, tags
 
     return im, polys, tags
 
@@ -223,7 +223,7 @@ def shrink_poly(poly, r):
     R = 0.3
     # find the longer pair
     if np.linalg.norm(poly[0] - poly[1]) + np.linalg.norm(poly[2] - poly[3]) > \
-                    np.linalg.norm(poly[0] - poly[3]) + np.linalg.norm(poly[1] - poly[2]):
+            np.linalg.norm(poly[0] - poly[3]) + np.linalg.norm(poly[1] - poly[2]):
         # first move (p0, p1), (p2, p3), then (p0, p3), (p1, p2)
         ## p0, p1
         theta = np.arctan2((poly[1][1] - poly[0][1]), (poly[1][0] - poly[0][0]))
@@ -309,8 +309,8 @@ def line_cross_point(line1, line2):
     else:
         k1, _, b1 = line1
         k2, _, b2 = line2
-        x = -(b1-b2)/(k1-k2)
-        y = k1*x + b1
+        x = -(b1 - b2) / (k1 - k2)
+        y = k1 * x + b1
     return np.array([x, y], dtype=np.float32)
 
 
@@ -322,7 +322,7 @@ def line_verticle(line, point):
         if line[0] == 0:
             verticle = [1, 0, -point[0]]
         else:
-            verticle = [-1./line[0], -1, point[1] - (-1/line[0] * point[0])]
+            verticle = [-1. / line[0], -1, point[1] - (-1 / line[0] * point[0])]
     return verticle
 
 
@@ -333,9 +333,9 @@ def rectangle_from_parallelogram(poly):
     :return:
     '''
     p0, p1, p2, p3 = poly
-    angle_p0 = np.arccos(np.dot(p1-p0, p3-p0)/(np.linalg.norm(p0-p1) * np.linalg.norm(p3-p0)))
+    angle_p0 = np.arccos(np.dot(p1 - p0, p3 - p0) / (np.linalg.norm(p0 - p1) * np.linalg.norm(p3 - p0)))
     if angle_p0 < 0.5 * np.pi:
-        if np.linalg.norm(p0 - p1) > np.linalg.norm(p0-p3):
+        if np.linalg.norm(p0 - p1) > np.linalg.norm(p0 - p3):
             # p0 and p2
             ## p0
             p2p3 = fit_line([p2[0], p3[0]], [p2[1], p3[1]])
@@ -359,7 +359,7 @@ def rectangle_from_parallelogram(poly):
             new_p3 = line_cross_point(p0p3, p0p3_verticle)
             return np.array([p0, new_p1, p2, new_p3], dtype=np.float32)
     else:
-        if np.linalg.norm(p0-p1) > np.linalg.norm(p0-p3):
+        if np.linalg.norm(p0 - p1) > np.linalg.norm(p0 - p3):
             # p1 and p3
             ## p1
             p2p3 = fit_line([p2[0], p3[0]], [p2[1], p3[1]])
@@ -399,17 +399,18 @@ def sort_rectangle(poly):
         # 找到最低点右边的点 - find the point that sits right to the lowest point
         p_lowest_right = (p_lowest - 1) % 4
         p_lowest_left = (p_lowest + 1) % 4
-        angle = np.arctan(-(poly[p_lowest][1] - poly[p_lowest_right][1])/(poly[p_lowest][0] - poly[p_lowest_right][0]))
+        angle = np.arctan(
+            -(poly[p_lowest][1] - poly[p_lowest_right][1]) / (poly[p_lowest][0] - poly[p_lowest_right][0]))
         # assert angle > 0
         if angle <= 0:
             print(angle, poly[p_lowest], poly[p_lowest_right])
-        if angle/np.pi * 180 > 45:
+        if angle / np.pi * 180 > 45:
             # 这个点为p2 - this point is p2
             p2_index = p_lowest
             p1_index = (p2_index - 1) % 4
             p0_index = (p2_index - 2) % 4
             p3_index = (p2_index + 1) % 4
-            return poly[[p0_index, p1_index, p2_index, p3_index]], -(np.pi/2 - angle)
+            return poly[[p0_index, p1_index, p2_index, p3_index]], -(np.pi / 2 - angle)
         else:
             # 这个点为p3 - this point is p3
             p3_index = p_lowest
@@ -618,7 +619,7 @@ def generate_rbox(im_size, polys, tags):
 
 
 def generator(input_size=512, batch_size=32,
-              background_ratio=3./8,
+              background_ratio=3. / 8,
               random_scale=np.array([0.5, 1, 1.5, 2.0]),
               vis=False):
     image_list = np.array(get_images())
@@ -639,8 +640,8 @@ def generator(input_size=512, batch_size=32,
                 im = cv2.imread(im_fn)
                 # print im_fn
                 h, w, _ = im.shape
-                #txt_fn = im_fn.replace(os.path.basename(im_fn).split('.')[1], 'txt')
-                txt_fn = im_fn.replace('JPEGImages', 'Annotations').replace('jpg', 'xml')
+                txt_fn = im_fn.replace('JPEGImages', 'Annotations').replace(os.path.basename(im_fn).split('.')[1], 'xml')
+                # txt_fn = im_fn.replace('JPEGImages', 'Annotations').replace('jpg', 'xml')
                 if not os.path.exists(txt_fn):
                     print('text file {} does not exists'.format(txt_fn))
                     continue
@@ -692,8 +693,8 @@ def generator(input_size=512, batch_size=32,
                     resize_h = input_size
                     resize_w = input_size
                     im = cv2.resize(im, dsize=(resize_w, resize_h))
-                    resize_ratio_3_x = resize_w/float(new_w)
-                    resize_ratio_3_y = resize_h/float(new_h)
+                    resize_ratio_3_x = resize_w / float(new_w)
+                    resize_ratio_3_y = resize_h / float(new_h)
                     text_polys[:, :, 0] *= resize_ratio_3_x
                     text_polys[:, :, 1] *= resize_ratio_3_y
                     new_h, new_w, _ = im.shape
@@ -765,7 +766,7 @@ def get_batch(num_workers, **kwargs):
     try:
         enqueuer = GeneratorEnqueuer(generator(**kwargs), use_multiprocessing=True)
         print('Generator use 10 batches for buffering, this may take a while, you can tune this yourself.')
-        enqueuer.start(max_queue_size=10, workers=num_workers)
+        enqueuer.start(max_queue_size=5, workers=num_workers)
         generator_output = None
         while True:
             while enqueuer.is_running():
@@ -782,8 +783,8 @@ def get_batch(num_workers, **kwargs):
 
 
 if __name__ == '__main__':
-    g = generator(input_size=512, batch_size=20, background_ratio=3./8,
-                  random_scale=np.array([0.8, 1, 2.0, 3.0]), vis=True)
+    g = generator(input_size=512, batch_size=20, background_ratio=3. / 8,
+                  random_scale=np.array([0.8, 1, 2.0, 3.0]), vis=False)
     next(g)
     # for j in range(len(next(g)[3])):
     #     print(len(next(g)[3][j]))
@@ -793,4 +794,3 @@ if __name__ == '__main__':
     #         print(next(g)[3][j][kk].shape)
     #         cv2.imshow(' ', next(g)[3][j][kk])
     #         cv2.waitKey()
-
